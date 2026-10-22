@@ -1,6 +1,14 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#3d7a2a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Hollow Creek">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Hollow Creek Farm</title>
 <style>@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&family=VT323&display=swap');
 :root {
@@ -105,6 +113,8 @@ img { image-rendering: pixelated; }
 .title-btns { display: flex; gap: 10px; justify-content: center; }
 .title-btns button { font-family: inherit; font-size: 22px; padding: 8px 22px; background: var(--accent); color: #fff; border: 4px solid #24561a; border-radius: 6px; cursor: pointer; box-shadow: 0 4px 0 #24561a; }
 .title-btns button:hover { background: #5cb847; }
+.title-btns button.install { background: var(--wood-l); color: #2b1a0d; border-color: var(--wood-d); box-shadow: 0 4px 0 var(--wood-d); font-size: 18px; }
+.title-btns { flex-wrap: wrap; }
 .warn-small { font-size: 13px; color: #8a3a1a; }
 .help p { font-size: 16px; line-height: 1.4; margin: 0 0 10px; }
 
@@ -1158,6 +1168,10 @@ G.startGame = (state) => {
   G.started = true; G.ui.renderHotbar();
   if (fresh) setTimeout(() => G.ui.help(), 400);
 };
+// Android/Chrome install prompt: show an "Install app" button on the title screen when available
+G._installEvt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); G._installEvt = e; G._showInstall && G._showInstall(); });
+window.addEventListener('appinstalled', () => { G._installEvt = null; const b = document.getElementById('installbtn'); if (b) b.remove(); });
 G.titleScreen = () => {
   const ui = G.ui.el; const has = G.hasSave();
   const d = document.createElement('div'); d.id = 'title';
@@ -1167,6 +1181,13 @@ G.titleScreen = () => {
     <div class="title-btns">${has ? '<button id="cont">Continue</button>' : ''}<button id="newg">New Game</button></div>
     ${has ? '<p class="warn-small">Starting a new game overwrites your save.</p>' : ''}</div>`;
   ui.appendChild(d);
+  G._showInstall = () => {
+    if (!G._installEvt || document.getElementById('installbtn') || !d.isConnected) return;
+    const b = document.createElement('button'); b.id = 'installbtn'; b.className = 'install'; b.textContent = 'Install app';
+    b.onclick = async () => { const ev = G._installEvt; if (!ev) return; ev.prompt(); try { await ev.userChoice; } catch (e) { } G._installEvt = null; b.remove(); };
+    d.querySelector('.title-btns').appendChild(b);
+  };
+  G._showInstall();
   const start = st => { d.remove(); G.startGame(st); };
   d.querySelector('#newg').onclick = () => { const s = G.newState(); s.name = (d.querySelector('#pname').value || 'Farmer').slice(0, 16); start(s); };
   if (has) d.querySelector('#cont').onclick = () => { const s = G.loadSave(); if (s) start(s); else start(G.newState()); };
@@ -6900,5 +6921,10 @@ window.addEventListener('load', () => G.boot());
   });
 })();
 
+</script>
+<script>
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
 </script>
 </body></html>

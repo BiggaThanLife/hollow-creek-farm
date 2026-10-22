@@ -989,6 +989,10 @@ G.startGame = (state) => {
   G.started = true; G.ui.renderHotbar();
   if (fresh) setTimeout(() => G.ui.help(), 400);
 };
+// Android/Chrome install prompt: show an "Install app" button on the title screen when available
+G._installEvt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); G._installEvt = e; G._showInstall && G._showInstall(); });
+window.addEventListener('appinstalled', () => { G._installEvt = null; const b = document.getElementById('installbtn'); if (b) b.remove(); });
 G.titleScreen = () => {
   const ui = G.ui.el; const has = G.hasSave();
   const d = document.createElement('div'); d.id = 'title';
@@ -998,6 +1002,13 @@ G.titleScreen = () => {
     <div class="title-btns">${has ? '<button id="cont">Continue</button>' : ''}<button id="newg">New Game</button></div>
     ${has ? '<p class="warn-small">Starting a new game overwrites your save.</p>' : ''}</div>`;
   ui.appendChild(d);
+  G._showInstall = () => {
+    if (!G._installEvt || document.getElementById('installbtn') || !d.isConnected) return;
+    const b = document.createElement('button'); b.id = 'installbtn'; b.className = 'install'; b.textContent = 'Install app';
+    b.onclick = async () => { const ev = G._installEvt; if (!ev) return; ev.prompt(); try { await ev.userChoice; } catch (e) { } G._installEvt = null; b.remove(); };
+    d.querySelector('.title-btns').appendChild(b);
+  };
+  G._showInstall();
   const start = st => { d.remove(); G.startGame(st); };
   d.querySelector('#newg').onclick = () => { const s = G.newState(); s.name = (d.querySelector('#pname').value || 'Farmer').slice(0, 16); start(s); };
   if (has) d.querySelector('#cont').onclick = () => { const s = G.loadSave(); if (s) start(s); else start(G.newState()); };

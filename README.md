@@ -9,6 +9,8 @@ Farm, fish, mine, craft, build, hire helpers and run your own little farm shop.
 
 Open `dist/index.html` in a browser. No server or install needed.
 
+**Install on Android:** open the online link in Chrome and tap **Install app** on the title screen (or ⋮ → *Install app* / *Add to Home screen*). It runs fullscreen with its own icon and works offline.
+
 **Desktop:** WASD to move · click/Space to use a tool · right-click/E to interact · 1–0 hotbar · Tab inventory · C crafting · H help
 **Phone:** joystick to move · USE / TALK-OPEN buttons · BAG, CRAFT, ? buttons
 
