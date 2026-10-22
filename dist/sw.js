@@ -1,5 +1,5 @@
-// Hollow Creek Farm service worker — offline play. Build 943d7814cf
-const CACHE = 'hollow-creek-943d7814cf';
+// Hollow Creek Farm service worker — offline play. Build 7377b5e0e5
+const CACHE = 'hollow-creek-7377b5e0e5';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-192.png', './icons/icon-maskable-512.png', './icons/favicon-32.png', './icons/apple-touch-icon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

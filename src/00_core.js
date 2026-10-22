@@ -296,7 +296,7 @@ G.sleep = (type = 'full') => {
     st.time = 0; st.awake = 0;
     G.newDay(true);
     G._sleeping = false;
-    const p = G.player; const sp = G.maps[p.map] && G.maps[p.map].spawns && G.maps[p.map].spawns.bed;
+    const p = G.player; const sp = (G.bedSpot && G.bedSpot(p.map)) || (G.maps[p.map] && G.maps[p.map].spawns && G.maps[p.map].spawns.bed);
     if (sp) { p.x = (sp.x + 0.5) * G.TILE; p.y = (sp.y + 0.8) * G.TILE; p.dir = sp.dir || 'down'; }
     G.ui.toast(`Good morning! ${G.weekday()}, ${G.dateStr()}`, null, 'level');
     G.flushReport();

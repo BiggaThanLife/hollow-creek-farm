@@ -117,9 +117,24 @@
     ['candle_table', 'Candle Table', 250], ['candle_table_2', 'Side Table', 250], ['plant_pot', 'Potted Plant', 120], ['birdhouse', 'Birdhouse', 200],
     ['hay_bale', 'Hay Bale', 80], ['farm_cart', 'Farm Cart', 900], ['farm_cart_2', 'Hand Cart', 700], ['well', 'Stone Well', 1500],
     ['wooden_storage_barrel', 'Barrel', 150], ['kitchen_counter', 'Kitchen Counter', 500], ['kitchen_counter_2', 'Kitchen Stove', 600], ['basket', 'Basket', 60],
-    ['wooden_cabinet', 'Cabinet', 450], ['flower_patch', 'Flower Patch', 100], ['farm_bed', 'Guest Bed', 800], ['wheat_bundle', 'Wheat Sheaf', 60],
+    ['wooden_cabinet', 'Cabinet', 450], ['flower_patch', 'Flower Patch', 100], ['farm_bed', 'Bed', 800], ['wheat_bundle', 'Wheat Sheaf', 60],
     ['bucket', 'Bucket', 40], ['toolbox', 'Toolbox', 200],
-  ];
+    ['hay_bale_2', 'Round Hay Bale', 80], ['wooden_storage_crate', 'Crate', 120], ['wooden_sign', 'Wooden Sign', 100], ['mailbox', 'Mailbox', 150],
+    ['well_2', 'Covered Well', 1500], ['well_3', 'Old Well', 1500], ['farm_cart', 'Farm Cart', 900], ['bucket_2', 'Fruit Bucket', 60], ['basket_2', 'Bread Basket', 60], ['basket_3', 'Wicker Basket', 60],
+  ].filter((f, i, a) => a.findIndex(g => g[0] === f[0]) === i);
+  // footprint / draw scale for big pieces (matches how the farm module lays out the house & yard)
+  const FURN_SIZE = {
+    well: { w: 2, h: 2, s: 2 }, well_2: { w: 2, h: 2, s: 2 }, well_3: { w: 2, h: 2, s: 2 },
+    fireplace: { w: 2, h: 1, s: 2, dy: 8 }, fireplace_2: { w: 2, h: 1, s: 2, dy: 8 }, fireplace_3: { w: 2, h: 1, s: 2, dy: 8 },
+    farm_bed: { w: 2, h: 2, s: 2 }, bookshelf2: { w: 2, h: 1, s: 2, dy: 6 },
+    wooden_table: { w: 2, h: 1, s: 1.5 }, farm_cart: { w: 2, h: 1, s: 1.5 }, farm_cart_2: { w: 2, h: 1, s: 1.5 },
+    kitchen_counter: { dy: 4 }, kitchen_counter_2: { dy: 4 }, wooden_cabinet: { dy: 4 },
+    flower_patch: { walk: true }, basket: { walk: true }, basket_2: { walk: true }, basket_3: { walk: true },
+  };
+  // what talking to a piece does (besides picking it up)
+  const FURN_KIND = { farm_bed: 'bed', bookshelf: 'calendar', bookshelf2: 'calendar', fireplace: 'fire', fireplace_2: 'fire', fireplace_3: 'fire',
+    rocking_chair: 'chair', wooden_sign: 'sign', mailbox: 'mailbox', well: 'well', well_2: 'well', well_3: 'well' };
+  const furnExtra = key => () => Object.assign({ key }, FURN_SIZE[key] || {}, FURN_KIND[key] ? { kind: FURN_KIND[key] } : {});
   const ARTISAN_BASE = { jam: 100, pickles: 90, wine: 150, juice: 100 };
   const FRUIT = new Set(['strawberry', 'tomato']);
 
@@ -134,9 +149,9 @@
     def({ id: 'wine', name: 'Wine', price: ARTISAN_BASE.wine, cat: 'artisan', desc: 'Aged fruit wine. Collectors adore it.' });
     def({ id: 'juice', name: 'Juice', price: ARTISAN_BASE.juice, cat: 'artisan', desc: 'Fresh pressed juice.' });
     def({ id: 'torch', name: 'Torch', price: 5, cat: 'craftable', desc: 'A warm light for dark nights.', place: 'torch', use: placeUse('torch') });
-    def({ id: 'path_stone', name: 'Stone Path', price: 1, cat: 'craftable', desc: 'Decorative flooring. Pick up with a pickaxe.', place: 'path_stone', use: placeUse('path_stone') });
+    def({ id: 'path_stone', name: 'Stone Path', price: 1, cat: 'craftable', desc: 'Lays cobblestone that joins up with neighbouring paths. Pick it back up with a pickaxe.', use: placePath });
     def({ id: 'fence', name: 'Wooden Fence', price: 2, cat: 'craftable', icon: G.art.icons.fence ? 'fence' : 'wooden_fence', desc: 'Keeps things tidy.', place: 'fence', use: placeUse('fence') });
-    for (const [key, name, buy] of FURN) def({ id: 'furn_' + key, name, icon: key, price: Math.floor(buy / 2), cat: 'furniture', stack: 99, desc: 'Furniture. Place it anywhere on the farm or in your house. Right-click to pick up.', place: 'furniture', use: placeUse('furniture', () => ({ key })) });
+    for (const [key, name, buy] of FURN) def({ id: 'furn_' + key, name, icon: key, price: Math.floor(buy / 2), cat: 'furniture', stack: 99, desc: 'Decoration. Place it on the farm or in your house. Talk to it (or hit it with an axe/pickaxe) to pick it up again.', place: 'furniture', use: placeUse('furniture', furnExtra(key)) });
   }
 
   /** item.use factory: place an object on the targeted tile */
@@ -145,10 +160,13 @@
       if (ctx.obj) return false;
       const m = G.maps[ctx.map];
       if (!m || m.persistent === false || ctx.map === 'town') { G.ui.toast("You can't place that here.", null, 'warn'); return true; }
-      if (!G.world.canPlace(ctx.map, ctx.x, ctx.y, 1, 1)) { G.sfx('error'); return true; }
-      const soil = G.farming && G.farming.soilAt ? G.farming.soilAt(ctx.map, ctx.x, ctx.y) : null;
-      if (soil && soil.crop && !soil.crop.dead) { G.sfx('error'); G.ui.toast('There is a crop growing there.', null, 'warn'); return true; }
-      const o = Object.assign({ type, x: ctx.x, y: ctx.y }, extra ? extra() : {});
+      const ex = extra ? extra() : {}; const w = ex.w || 1, h = ex.h || 1;
+      if (!G.world.canPlace(ctx.map, ctx.x, ctx.y, w, h)) { G.sfx('error'); if (w > 1 || h > 1) G.ui.toast(`Needs a clear ${w}×${h} space (it fills right and down from here).`, null, 'warn'); return true; }
+      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+        const soil = G.farming && G.farming.soilAt ? G.farming.soilAt(ctx.map, ctx.x + i, ctx.y + j) : null;
+        if (soil && soil.crop && !soil.crop.dead) { G.sfx('error'); G.ui.toast('There is a crop growing there.', null, 'warn'); return true; }
+      }
+      const o = Object.assign({ type, x: ctx.x, y: ctx.y }, ex);
       G.world.addObject(ctx.map, o); G.inv.removeSlot(ctx.slotIndex, 1); G.sfx('dig');
       G.fx.burst((ctx.x + 0.5) * T, (ctx.y + 0.7) * T, '#c8a26b', 6, 3);
       if (type === 'torch') refreshLights(ctx.map);
@@ -245,9 +263,29 @@
       onTool: (o, tool) => (tool === 'axe' || tool === 'pickaxe') ? pickUp(o, curMap(), 'fence') : false,
     });
     G.defObj('furniture', {
-      draw: (ctx, o, px, py) => drawUp(ctx, spr(o.key), px, py),
-      interact(o, mapId) { G.ui.confirm(`Pick up the ${esc(nm('furn_' + o.key))}?`, () => pickUp(o, mapId, 'furn_' + o.key), 'Leave it', 'Pick up'); return true; },
-      onTool: (o, tool) => ['axe', 'pickaxe', 'hoe', 'scythe'].includes(tool) ? pickUp(o, curMap(), 'furn_' + o.key) : false,
+      solid: o => !o.walk,
+      draw(ctx, o, px, py) {
+        const sp = spr(o.key);
+        if (o.s) { const w = sp.width * o.s, h = sp.height * o.s, fw = o.w || 1, fh = o.h || 1; ctx.drawImage(sp, Math.round(px + fw * T / 2 - w / 2), Math.round(py + fh * T - h + (o.dy || 0)), w, h); }
+        else if (o.dy) ctx.drawImage(sp, px + (T - sp.width) / 2, py + T - sp.height + o.dy);
+        else drawUp(ctx, sp, px, py);
+      },
+      interact(o, mapId) {
+        const name = nm('furn_' + o.key);
+        if (o.kind === 'bed') { G.ui.sleepMenu(); return true; }
+        const pick = { label: `Pick up the ${name}`, fn: () => pickUp(o, mapId, 'furn_' + o.key) };
+        const act = {
+          calendar: { label: 'Read the crop calendar', fn: () => G.farming && G.farming.cropCalendar ? G.farming.cropCalendar() : G.ui.toast('Nothing to read yet.') },
+          fire: { label: 'Warm your hands', fn: () => G.ui.toast('The fire crackles warmly.', 'fireplace') },
+          chair: { label: 'Sit for a moment', fn: () => G.ui.toast(G.pick(['You rock gently for a moment. Ahh.', 'A good spot to plan tomorrow.']), 'rocking_chair') },
+          sign: { label: 'Read the sign', fn: () => G.ui.dialog('Sign', `<b>${esc(G.state.farmName || 'Hollow Creek')} Farm</b><br>Owner: ${esc(G.state.name)}`) },
+          mailbox: { label: 'Check the mail', fn: () => G.ui.dialog('Mailbox', G.pick(['No mail today. Just a curious snail.', 'Empty. Someone has left a pressed flower inside, though.', 'Nothing but a seed catalogue. Check the bookshelf at home for a crop calendar!'])) },
+          well: { label: 'Look into the well', fn: () => { G.ui.toast('The water is cool and clear. (Your watering can never runs dry.)', 'watering_can'); G.sfx('water'); } },
+        }[o.kind];
+        G.ui.dialog(name, act ? 'What would you like to do?' : `Pick up the ${name}? You can place it somewhere else or sell it.`, act ? [act, pick, { label: 'Leave it' }] : [pick, { label: 'Leave it' }], G.item('furn_' + o.key).icon);
+        return true;
+      },
+      onTool: (o, tool) => (tool === 'axe' || tool === 'pickaxe') ? pickUp(o, curMap(), 'furn_' + o.key) : false,
       label: o => nm('furn_' + o.key),
     });
   }
@@ -1344,7 +1382,83 @@
     checkUnlocks(true);
     ensureFarmObjects();
   });
+  /* ---- cobblestone paths: placed paths become real 'p' ground so they join like the house path ---- */
+  const PATHABLE = new Set(['g', 'G', 'd', 's']);
+  const pathStore = () => { const e = E(); return e.paths || (e.paths = {}); };
+  function placePath(ctx) {
+    const m = G.maps[ctx.map];
+    if (!m || m.persistent === false) { G.ui.toast("You can't lay a path here.", null, 'warn'); return true; }
+    const ch = G.world.ground(ctx.map, ctx.x, ctx.y);
+    if (ch === 'p') { G.ui.toast('There is already a path here.', null, 'warn'); return true; }
+    if (!PATHABLE.has(ch) || G.world.objectAt(ctx.map, ctx.x, ctx.y)) { G.sfx('error'); return true; }
+    const soil = G.farming && G.farming.soilAt ? G.farming.soilAt(ctx.map, ctx.x, ctx.y) : null;
+    if (soil && soil.tilled) { G.ui.toast('Clear the tilled soil first.', null, 'warn'); G.sfx('error'); return true; }
+    for (const w of m.warps || []) if (ctx.x >= w.x && ctx.x < w.x + (w.w || 1) && ctx.y >= w.y && ctx.y < w.y + (w.h || 1)) { G.sfx('error'); return true; }
+    const st = pathStore(); (st[ctx.map] = st[ctx.map] || {})[ctx.x + ',' + ctx.y] = ch;
+    G.world.setGround(ctx.map, ctx.x, ctx.y, 'p'); G.inv.removeSlot(ctx.slotIndex, 1); G.sfx('dig');
+    G.fx.burst((ctx.x + 0.5) * T, (ctx.y + 0.7) * T, '#a7a29a', 6, 3);
+    return true;
+  }
+  G.on('toolMiss', ctx => {
+    if (!ctx || !ctx.item || ctx.item.id !== 'pickaxe') return;
+    const st = pathStore()[ctx.map]; const k = ctx.x + ',' + ctx.y;
+    if (!st || st[k] === undefined) return;
+    G.world.setGround(ctx.map, ctx.x, ctx.y, st[k]); delete st[k];
+    G.inv.give('path_stone', 1); G.sfx('pickup'); G.fx.burst((ctx.x + 0.5) * T, (ctx.y + 0.7) * T, '#a7a29a', 6, 3);
+  });
+  function applyPaths() {
+    const st = pathStore();
+    // old saves: loose-stone path objects -> real paths
+    for (const mapId of ['farm', 'greenhouse']) {
+      if (!G.maps[mapId] || !G.state.maps[mapId]) continue;
+      for (const o of G.world.objects(mapId).filter(o => o.type === 'path_stone')) {
+        const ch = G.world.ground(mapId, o.x, o.y); G.world.removeObject(mapId, o);
+        if (PATHABLE.has(ch)) (st[mapId] = st[mapId] || {})[o.x + ',' + o.y] = ch; else G.inv.give('path_stone', 1);
+      }
+    }
+    for (const [mapId, tiles] of Object.entries(st)) { if (!G.maps[mapId]) continue; for (const k of Object.keys(tiles)) { const [x, y] = k.split(',').map(Number); G.world.setGround(mapId, x, y, 'p'); } }
+  }
+  /* ---- turn the farm's built-in decorations & house furniture into pick-up-able furniture ---- */
+  function convertDecor() {
+    for (const mapId of ['farm', 'house', 'greenhouse']) {
+      if (!G.maps[mapId] || !G.state.maps[mapId]) continue;
+      for (const o of G.world.objects(mapId)) {
+        if (!['decor', 'furn', 'bed', 'bookshelf'].includes(o.type)) continue;
+        const key = o.type === 'bed' ? 'farm_bed' : o.type === 'bookshelf' ? 'bookshelf2' : o.spr;
+        if (!G.items['furn_' + key]) continue;
+        const keep = { w: o.w, h: o.h, s: o.s, dy: o.dy, walk: o.walk };
+        for (const k of Object.keys(o)) if (!['uid', 'x', 'y'].includes(k)) delete o[k];
+        Object.assign(o, { type: 'furniture', key }, FURN_SIZE[key] || {}, FURN_KIND[key] ? { kind: FURN_KIND[key] } : {});
+        for (const [k, v] of Object.entries(keep)) if (v !== undefined) o[k] = v;
+        if (key === 'farm_bed') Object.assign(o, { w: 2, h: 2, s: 2 });
+        if (key === 'bookshelf2') Object.assign(o, { w: 2, h: 1, s: 2, dy: 6 });
+      }
+    }
+  }
+  // wake up next to whichever bed you slept in (beds can be moved now)
+  G.bedSpot = mapId => {
+    const bed = G.world.objects(mapId).find(o => (o.type === 'furniture' && o.key === 'farm_bed') || o.type === 'bed');
+    if (!bed) return null;
+    const w = bed.w || 2, h = bed.h || 2;
+    const opts = [[bed.x + w, bed.y + h - 1], [bed.x + w, bed.y], [bed.x, bed.y + h], [bed.x + 1, bed.y + h], [bed.x - 1, bed.y + h - 1]];
+    for (const [x, y] of opts) if (!G.world.isSolid(mapId, x, y)) return { x, y, dir: 'down' };
+    return null;
+  };
+  function mailboxArt() {
+    if (G.art.sprites.mailbox) return;
+    const c = G.makeCanvas(48, 48), x = c.getContext('2d');
+    x.fillStyle = 'rgba(0,0,0,.18)'; x.beginPath(); x.ellipse(24, 44, 10, 3, 0, 0, Math.PI * 2); x.fill();
+    x.fillStyle = '#3b2412'; x.fillRect(20, 21, 8, 24); x.fillStyle = '#6b4226'; x.fillRect(21, 21, 6, 23);
+    x.fillStyle = '#23406e'; x.beginPath(); x.arc(24, 13, 14, Math.PI, 0); x.fill(); x.fillRect(10, 12, 28, 12);
+    x.fillStyle = '#3d6fb5'; x.beginPath(); x.arc(24, 13, 12, Math.PI, 0); x.fill(); x.fillRect(12, 12, 24, 10);
+    x.fillStyle = '#6a97d8'; x.fillRect(14, 7, 10, 2);
+    x.fillStyle = '#7a1414'; x.fillRect(35, 2, 6, 14); x.fillStyle = '#d33'; x.fillRect(36, 3, 4, 12);
+    G.art.sprites.mailbox = c; G.art.icons.mailbox = c;
+  }
+  G.on('assetsLoaded', mailboxArt);
+
   G.on('loadGame', () => {
+    try { mailboxArt(); convertDecor(); applyPaths(); } catch (err) { console.error('decor/paths', err); }
     ensureState(); checkUnlocks(true); candidates();
     const pend = E().pendingBuild && BUILDINGS[E().pendingBuild];
     if (pend) { // bought but never placed (game closed mid-placement): refund
