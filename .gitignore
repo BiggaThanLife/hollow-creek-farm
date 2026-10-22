@@ -1,0 +1,4 @@
+dist/test_*.html
+dist/hollow_creek_farm.html
+node_modules/
+__pycache__/
