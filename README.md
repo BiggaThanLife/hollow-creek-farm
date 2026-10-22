@@ -5,6 +5,8 @@ A cozy Stardew Valley / Harvest Moon–style farming game that runs in the brows
 Farm, fish, mine, craft, build, hire helpers and run your own little farm shop.
 
 ## Play
+**Online:** https://biggathanlife.github.io/hollow-creek-farm/
+
 Open `dist/index.html` in a browser. No server or install needed.
 
 **Desktop:** WASD to move · click/Space to use a tool · right-click/E to interact · 1–0 hotbar · Tab inventory · C crafting · H help
