@@ -146,7 +146,8 @@ input, select, textarea { color: var(--ink); background: #fffaf0; }
   .choices button { padding: 10px 12px; }
   .title-card { padding: 18px 16px; } .title-card h1 { font-size: 34px; }
   .title-icons img { width: 36px; height: 36px; }
-  #toasts { bottom: auto; top: calc(8px + env(safe-area-inset-top, 0px)); left: 6px; max-width: 55vw; }
+  #toasts { bottom: auto; top: calc(8px + env(safe-area-inset-top, 0px)); left: 6px; max-width: calc(100vw - 200px); }
+  #toasts .toast:nth-last-child(n+4) { display: none; }
   .toast { font-size: 13px; }
   .skills .skill { grid-template-columns: 80px 40px 1fr; }
 }
@@ -844,6 +845,22 @@ G.ui = {
     document.addEventListener('mousemove', e => { const tt = document.getElementById('tooltip'); if (tt) { tt.style.left = (e.clientX + 16) + 'px'; tt.style.top = (e.clientY + 16) + 'px'; } });
   },
   esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); },
+  /** Free screen space for canvas pop-ups, in canvas draw units (screen px / zoom).
+   *  top = below the clock panel and toasts, bottom = above the hotbar, ctrlTop = above the touch buttons. */
+  safeArea() {
+    const cv = G.canvas, z = G.cam.zoom || 1, r = cv.getBoundingClientRect();
+    const k = (cv.width / (r.width || 1)) / z, vw = cv.width / z, vh = cv.height / z;
+    const rectOf = sel => { const e = document.querySelector(sel); if (!e || !e.offsetParent && getComputedStyle(e).position !== 'fixed') return null; const b = e.getBoundingClientRect(); return b.width && b.height ? b : null; };
+    let top = 8, bottom = vh - 8, ctrlTop = vh - 8;
+    const hud = rectOf('#hud'); if (hud) top = Math.max(top, (hud.bottom - r.top) * k + 8);
+    const ts = document.querySelectorAll('#toasts .toast:not(.out)');
+    if (ts.length && G.isTouch) { const b = ts[ts.length - 1].getBoundingClientRect(); if (b.height) top = Math.max(top, (b.bottom - r.top) * k + 8); }
+    const hb = rectOf('#hotbar'); if (hb) bottom = Math.min(bottom, (hb.top - r.top) * k - 8);
+    ctrlTop = bottom;
+    const tc = document.getElementById('touch');
+    if (tc && tc.style.display !== 'none') for (const sel of ['#joy', '#tbtns']) { const b = rectOf(sel); if (b) ctrlTop = Math.min(ctrlTop, (b.top - r.top) * k - 8); }
+    return { top, bottom, ctrlTop, vw, vh, narrow: vw < 520 };
+  },
   updateHUD() {
     const h = this.el.querySelector('#hud'); if (!h) return;
     const f = G.fatigue(), hrs = Math.floor(G.state.awake / 60);
@@ -4518,7 +4535,18 @@ window.addEventListener('load', () => G.boot());
     // ladder-up spot: floor with wall above and floor below
     const cands = [];
     for (let y = 2; y < H - 2; y++) for (let x = 1; x < W - 1; x++) if (isFloor(x, y) && !isFloor(x, y - 1) && isFloor(x, y + 1) && isFloor(x, y + 2)) cands.push({ x, y });
-    let L = cands.length ? G.pick(cands) : null;
+    // never let the ladder (a solid object) plug a corridor: the cave must stay fully reachable with it in place
+    const solid0 = g.map(r => r.map(v => v ? 1 : 0));
+    const reachCount = (sx, sy, blocked) => bfs(solid0, W, H, sx, sy, blocked).filter(d => d >= 0).length;
+    const keepsCaveWhole = (bx, by, sx, sy, alsoBlocked) => {
+      const blk = (X, Y) => (X === bx && Y === by) || (alsoBlocked && alsoBlocked(X, Y));
+      const full = reachCount(sx, sy, alsoBlocked ? (X, Y) => alsoBlocked(X, Y) : null);
+      return reachCount(sx, sy, blk) === full - 1 && full > W * H * 0.15;
+    };
+    cands.sort(() => Math.random() - 0.5);
+    let L = null;
+    for (let i = 0; i < cands.length && i < 80 && !L; i++) { const c = cands[i]; if (keepsCaveWhole(c.x, c.y, c.x, c.y + 1)) L = c; }
+    if (!L && cands.length) L = cands[0];
     if (!L) { // carve one
       for (let y = 2; y < H - 2 && !L; y++) for (let x = 1; x < W - 1; x++) if (isFloor(x, y + 1)) { g[y][x] = 0; L = { x, y }; break; }
     }
@@ -4538,9 +4566,12 @@ window.addEventListener('load', () => G.boot());
         lake = true;
       }
     }
+    let solidG = g.map(r => r.map(v => v ? 1 : 0));
+    let dist = bfs(solidG, W, H, S.x, S.y);
+    // seal any pocket of floor you can't walk to (rare cave-shape leftovers) so nothing looks reachable that isn't
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (g[y][x] === 0 && dist[y * W + x] < 0 && !(x === L.x && y === L.y)) g[y][x] = 1;
+    solidG = g.map(r => r.map(v => v ? 1 : 0)); dist = bfs(solidG, W, H, S.x, S.y);
     const rows = g.map(r => r.map(v => v === 2 ? 'w' : (v ? 'M' : 'm')).join(''));
-    const solidG = g.map(r => r.map(v => v ? 1 : 0));
-    const dist = bfs(solidG, W, H, S.x, S.y);
     const fl = (x, y) => isFloor(x, y) && g[y][x] === 0;
     const open8 = (x, y) => { for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) if (!fl(x + i, y + j)) return false; return true; };
     Object.assign(m, { w: W, h: H, ground: rows, dark: Math.min(0.58, 0.2 + 0.38 * n / MAX_FLOOR), name: 'Mine Floor ' + n });
@@ -4550,7 +4581,7 @@ window.addEventListener('load', () => G.boot());
     // elevator on every 5th floor
     if (n % 5 === 0) {
       let best = null, bd = 1e9;
-      for (const c of cands) { if (Math.abs(c.x - L.x) < 2 && c.y === L.y) continue; if (taken.has(G.key(c.x, c.y)) || taken.has(G.key(c.x, c.y + 1))) continue; const d = dist[(c.y + 1) * W + c.x]; if (d >= 2 && d < bd) { bd = d; best = c; } }
+      for (const c of cands) { if (Math.abs(c.x - L.x) < 2 && c.y === L.y) continue; if (taken.has(G.key(c.x, c.y)) || taken.has(G.key(c.x, c.y + 1))) continue; const d = dist[(c.y + 1) * W + c.x]; if (d >= 2 && d < bd && keepsCaveWhole(c.x, c.y, S.x, S.y, (X, Y) => X === L.x && Y === L.y)) { bd = d; best = c; } }
       if (best) { addObj('mine_elevator', best.x, best.y); taken.add(G.key(best.x, best.y)); taken.add(G.key(best.x, best.y + 1)); m.spawns.elev = { x: best.x, y: best.y + 1, dir: 'down' }; }
     }
     // free floor tiles
@@ -5029,7 +5060,8 @@ window.addEventListener('load', () => G.boot());
     const leftSide = p.dir === 'right' || (p.dir !== 'left' && psx + 64 + BW + PW + 30 > vw);
     let bx = leftSide ? psx - 70 - BW - PW - 12 : psx + 64, by = psy - 60 - BH / 2;
     if (bx < 10) bx = psx + 64;
-    bx = G.clamp(bx, 10, vw - BW - PW - 30); by = G.clamp(by, 60, vh - BH - 110);
+    const SA = G.ui.safeArea ? G.ui.safeArea() : { top: 60, ctrlTop: vh - 110 };
+    bx = G.clamp(bx, 10, vw - BW - PW - 30); by = G.clamp(by, SA.top + 30, Math.max(SA.top + 30, SA.ctrlTop - BH - 44));
     // intro pop / outro
     let sc = Math.min(1, mg.t / 0.22); sc = 1 + 2.2 * Math.pow(sc - 1, 3) + 1.2 * Math.pow(sc - 1, 2); // easeOutBack-ish
     if (mg.end) sc = 1 - Math.max(0, (mg.endT - 0.3) / 0.25) * 0.15;
@@ -5085,7 +5117,7 @@ window.addEventListener('load', () => G.boot());
     if (!mg.end) {
       text(ctx, 'REEL IT IN!', lx, by - 10, 15, '#fff6d6');
       if (tired()) text(ctx, '(tired)', lx, by - 28, 12, '#bbb');
-      text(ctx, 'hold SPACE / mouse', lx, by + BH + 22, 12, '#ddd');
+      text(ctx, G.isTouch ? 'hold USE' : 'hold SPACE / mouse', lx, by + BH + 22, 12, '#ddd');
       if (mg.inside && mg.perfect && mg.t > 1) text(ctx, 'perfect so far', lx, by + BH + 38, 11, '#ffe14d');
     } else if (mg.end === 'caught') {
       const k = Math.min(1, mg.endT / 0.2);
@@ -5105,36 +5137,49 @@ window.addEventListener('load', () => G.boot());
     ctx.restore();
   }
 
+  // largest font (<= size) that fits text into maxW
+  function fitSize(ctx, str, size, maxW) {
+    for (let s = size; s > 9; s--) { ctx.font = `bold ${s}px ${FONT}`; if (ctx.measureText(str).width <= maxW) return s; }
+    return 9;
+  }
   function drawCatchCard(ctx, vw) {
     const c = catchCard; const life = 3.4;
     const k = c.t < 0.25 ? 1 - Math.pow(1 - c.t / 0.25, 3) : (c.t > life - 0.35 ? (life - c.t) / 0.35 : 1);
-    const W = 380, H = 104, x = vw / 2 - W / 2, y = -H + (H + 70) * k;
+    const SA = G.ui.safeArea ? G.ui.safeArea() : { top: 70, ctrlTop: G.cam.h - 120 };
+    const W = Math.min(380, vw - 16), H = 104, x = Math.round(vw / 2 - W / 2);
+    // sit in the open space above the player, below the clock panel / toasts
+    const psy = G.player.y - G.cam.y;
+    const yRest = G.clamp(psy - 130 - H, SA.top + 34, Math.max(SA.top + 34, SA.ctrlTop - H));
+    const y = yRest - (1 - k) * 40;
     ctx.save(); ctx.globalAlpha = Math.max(0, Math.min(1, k * 1.2));
     ctx.fillStyle = 'rgba(0,0,0,0.35)'; rr(ctx, x + 4, y + 6, W, H, 10); ctx.fill();
     ctx.fillStyle = '#5b3a1e'; rr(ctx, x, y, W, H, 10); ctx.fill();
     ctx.fillStyle = '#f6e6c2'; rr(ctx, x + 4, y + 4, W - 8, H - 8, 8); ctx.fill();
-    // icon w/ sparkle
     const ic = G.icon(G.item(c.id).icon);
     ctx.fillStyle = '#e9d1a0'; rr(ctx, x + 14, y + 14, 76, 76, 8); ctx.fill();
     const wob = Math.sin(c.t * 6) * 0.08;
     ctx.save(); ctx.translate(x + 52, y + 52); ctx.rotate(wob); ctx.drawImage(ic, -32, -32, 64, 64); ctx.restore();
     if (c.q) stars(ctx, c.q, x + 18, y + 86, 18);
-    const nm = G.item(c.id).name;
-    text(ctx, (FISH[c.id] ? 'You caught a ' : 'You fished up ') , x + 104, y + 32, 14, '#6b4a2b', 'left', null);
-    text(ctx, (c.q ? G.QUALITY[c.q] + ' ' : '') + nm + '!', x + 104, y + 56, 22, '#3b2412', 'left', null);
-    text(ctx, `Worth ${c.val}g`, x + 104, y + 82, 15, '#8a5a00', 'left', null);
-    let tx = x + 210;
-    if (c.perfect) { text(ctx, 'PERFECT', tx, y + 82, 13, '#c58a00', 'left', null); tx += 74; }
-    if (c.isNew) text(ctx, 'NEW!', tx, y + 82, 13, '#2f8a3f', 'left', null);
-    if (c.tired) text(ctx, '(tired)', x + W - 16, y + 28, 12, '#888', 'right', null);
+    const nm = (c.q ? G.QUALITY[c.q] + ' ' : '') + G.item(c.id).name + '!';
+    const tx0 = x + 104, maxW = W - 104 - 12;
+    text(ctx, (FISH[c.id] ? 'You caught a ' : 'You fished up '), tx0, y + 32, 14, '#6b4a2b', 'left', null);
+    text(ctx, nm, tx0, y + 58, fitSize(ctx, nm, 22, maxW), '#3b2412', 'left', null);
+    const worth = `Worth ${c.val}g`; text(ctx, worth, tx0, y + 84, 15, '#8a5a00', 'left', null);
+    ctx.font = `bold 15px ${FONT}`;
+    let tx = tx0 + ctx.measureText(worth).width + 12;
+    const tag = (str, col) => { ctx.font = `bold 13px ${FONT}`; const w = ctx.measureText(str).width; if (tx + w <= x + W - 10) { text(ctx, str, tx, y + 84, 13, col, 'left', null); tx += w + 10; } };
+    if (c.perfect) tag('PERFECT', '#c58a00');
+    if (c.isNew) tag('NEW!', '#2f8a3f');
+    if (c.tired) text(ctx, '(tired)', x + W - 12, y + 30, 12, '#888', 'right', null);
     ctx.restore();
   }
 
   function drawBanner(ctx, vw) {
     const b = banner, life = 2.4; const k = b.t < 0.3 ? b.t / 0.3 : (b.t > life - 0.5 ? (life - b.t) / 0.5 : 1);
     ctx.save(); ctx.globalAlpha = Math.max(0, k);
-    const y = 110;
-    const w = Math.max(220, b.sub ? b.sub.length * 9 + 40 : 0);
+    const SA = G.ui.safeArea ? G.ui.safeArea() : { top: 70 };
+    const y = SA.top + 40;
+    const w = Math.min(vw - 16, Math.max(220, b.sub ? b.sub.length * 9 + 40 : 0));
     ctx.fillStyle = 'rgba(20,12,6,0.7)'; rr(ctx, vw / 2 - w / 2, y - 34, w, b.sub ? 64 : 46, 10); ctx.fill();
     text(ctx, b.text, vw / 2, y, 26, '#ffe8b0');
     if (b.sub) text(ctx, b.sub, vw / 2, y + 22, 13, '#c9e4ff');

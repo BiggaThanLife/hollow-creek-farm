@@ -665,6 +665,22 @@ G.ui = {
     document.addEventListener('mousemove', e => { const tt = document.getElementById('tooltip'); if (tt) { tt.style.left = (e.clientX + 16) + 'px'; tt.style.top = (e.clientY + 16) + 'px'; } });
   },
   esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); },
+  /** Free screen space for canvas pop-ups, in canvas draw units (screen px / zoom).
+   *  top = below the clock panel and toasts, bottom = above the hotbar, ctrlTop = above the touch buttons. */
+  safeArea() {
+    const cv = G.canvas, z = G.cam.zoom || 1, r = cv.getBoundingClientRect();
+    const k = (cv.width / (r.width || 1)) / z, vw = cv.width / z, vh = cv.height / z;
+    const rectOf = sel => { const e = document.querySelector(sel); if (!e || !e.offsetParent && getComputedStyle(e).position !== 'fixed') return null; const b = e.getBoundingClientRect(); return b.width && b.height ? b : null; };
+    let top = 8, bottom = vh - 8, ctrlTop = vh - 8;
+    const hud = rectOf('#hud'); if (hud) top = Math.max(top, (hud.bottom - r.top) * k + 8);
+    const ts = document.querySelectorAll('#toasts .toast:not(.out)');
+    if (ts.length && G.isTouch) { const b = ts[ts.length - 1].getBoundingClientRect(); if (b.height) top = Math.max(top, (b.bottom - r.top) * k + 8); }
+    const hb = rectOf('#hotbar'); if (hb) bottom = Math.min(bottom, (hb.top - r.top) * k - 8);
+    ctrlTop = bottom;
+    const tc = document.getElementById('touch');
+    if (tc && tc.style.display !== 'none') for (const sel of ['#joy', '#tbtns']) { const b = rectOf(sel); if (b) ctrlTop = Math.min(ctrlTop, (b.top - r.top) * k - 8); }
+    return { top, bottom, ctrlTop, vw, vh, narrow: vw < 520 };
+  },
   updateHUD() {
     const h = this.el.querySelector('#hud'); if (!h) return;
     const f = G.fatigue(), hrs = Math.floor(G.state.awake / 60);

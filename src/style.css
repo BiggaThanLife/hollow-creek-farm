@@ -134,7 +134,8 @@ input, select, textarea { color: var(--ink); background: #fffaf0; }
   .choices button { padding: 10px 12px; }
   .title-card { padding: 18px 16px; } .title-card h1 { font-size: 34px; }
   .title-icons img { width: 36px; height: 36px; }
-  #toasts { bottom: auto; top: calc(8px + env(safe-area-inset-top, 0px)); left: 6px; max-width: 55vw; }
+  #toasts { bottom: auto; top: calc(8px + env(safe-area-inset-top, 0px)); left: 6px; max-width: calc(100vw - 200px); }
+  #toasts .toast:nth-last-child(n+4) { display: none; }
   .toast { font-size: 13px; }
   .skills .skill { grid-template-columns: 80px 40px 1fr; }
 }
